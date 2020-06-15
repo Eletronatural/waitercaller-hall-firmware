@@ -5,44 +5,22 @@
 */
 
 #include <FS.h>
+#include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-// Update these with values suitable for your network.
-const char* ssid = "Mofos House";
-const char* password = "stptff26";
-const char* mqtt_server = "192.168.0.104";
-const char* mqtt_user = "agent";
-const char* mqtt_password = "agentagent";
-
-// Device Serial Number
-const char *device_serial_number_file = "/device-serial-number.cfg";
-char deviceSerialNumber[30] = "";
+char ssid[30] = "";
+char password[30] = "";
+char mqttServer[17] = "";
+int mqttPort = 0;
+char mqttUser[30] = "";
+char mqttPassword[30] = "";
 
 // constants won't change. They're used here to set pin numbers:
 const int ledPin =  0; // the number of the LED pin
-
-// Loads serial number from a file
-void loadDeviceSerialNumber() {
-  File fileLoaded = SPIFFS.open(device_serial_number_file, "r");
-  if (!fileLoaded) {
-    Serial.println("Failed to open device-serial-number.cfg file.");    
-    return;
-  }
-  char buffer[30];
-  while (fileLoaded.available()) {
-    int i = fileLoaded.readBytesUntil('\n', buffer, sizeof(buffer));
-    buffer[i] = 0;
-  }
-  strcpy(deviceSerialNumber, buffer);
-  Serial.print("Waiter Caller Device serial number: ");
-  Serial.println(deviceSerialNumber);
-  fileLoaded.close();
-  return;
-}
 
 void setup_wifi() {
   delay(10);
@@ -96,10 +74,10 @@ void reconnect() {
     String clientId = "ESP8266Client-";
     clientId += String(random(0xffff), HEX);
     // Attempt to connect
-    if (client.connect(clientId.c_str(), mqtt_user, mqtt_password)) {
+    if (client.connect(clientId.c_str(), mqttUser, mqttPassword)) {
       Serial.println("connected");
       // Once connected, publish an announcement...
-      client.publish("waitercaller/device-start-notice", deviceSerialNumber);
+      client.publish("waitercaller/device-start-notice", "hall");
       // ... and resubscribe
       client.subscribe("waitercaller/hall");
     } else {
@@ -114,24 +92,32 @@ void reconnect() {
 
 void setup() {
   Serial.begin(115200);
-  setup_wifi();
   Serial.println("Booting...");
 
+  Serial.println("Mounting FS...");
+  if (!SPIFFS.begin()) {
+    Serial.println("Failed to mount file system");
+    return;
+  }
+
+  Serial.println("Load Config");
+  if (!loadConfig()) {
+    Serial.println("Failed to load config");
+  } else {
+    Serial.println("Config loaded");
+  }
+
+  Serial.println("Setup Network");
+  setup_wifi();
+  client.setServer(mqttServer, mqttPort);
+  client.setCallback(callback);
+
+  Serial.println("Setup GPIOs");
   // initialize the LED pin as an output:
   pinMode(BUILTIN_LED, OUTPUT); // Initialize the BUILTIN_LED pin as an output
   digitalWrite(BUILTIN_LED, HIGH);
   pinMode(ledPin, OUTPUT);
   digitalWrite(ledPin, HIGH);
-
-  if (!SPIFFS.begin()) {
-    Serial.println("Failed to mount file system");
-    return;
-  }
-  
-  loadDeviceSerialNumber();
-  
-  client.setServer(mqtt_server, 1883);
-  client.setCallback(callback);
 }
 
 void loop() {
